@@ -1,0 +1,38 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=BACKEND_ROOT / ".env", env_file_encoding="utf-8", extra="ignore")
+
+    database_url: str = "mysql+pymysql://root:password@127.0.0.1:3306/ragflow_review?charset=utf8mb4"
+    upload_dir: str = "uploads"
+    ragflow_api_url: str = "https://c636-240c-c603-1004-f41-dd8c-ed59-6b4e-5191.ngrok-free.app/"
+    ragflow_api_key: str = "ragflow-PSWNQln8ui7ktqGJqZCkEROH7PIpuN8MeZK8wvRlKsc"
+    ragflow_chat_id: str = ""
+    ragflow_parse_timeout: int = 300
+    ragflow_parse_poll_interval: int = 3
+    cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
+
+    @property
+    def upload_path(self) -> Path:
+        path = BACKEND_ROOT / self.upload_dir
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def ragflow_enabled(self) -> bool:
+        return bool(self.ragflow_api_url and self.ragflow_api_key)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
