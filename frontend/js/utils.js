@@ -1,4 +1,17 @@
-const STORAGE_KEY = 'ragflow_review_data';
+const STORAGE_PREFIX = 'ragflow_review_data';
+
+function storageKey() {
+  try {
+    const raw = localStorage.getItem('ragflow_auth_user');
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user?.id) return `${STORAGE_PREFIX}_${user.id}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return STORAGE_PREFIX;
+}
 
 export function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -67,7 +80,7 @@ export function showModal({ title, body, footer, onClose }) {
 
 export function getStore() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (raw) return JSON.parse(raw);
   } catch {
     /* ignore */
@@ -76,7 +89,7 @@ export function getStore() {
 }
 
 export function saveStore(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 
 function getDefaultStore() {

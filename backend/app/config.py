@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ragflow_parse_timeout: int = 300
     ragflow_parse_poll_interval: int = 3
     cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
+    jwt_secret: str = "change-me-in-production-ragflow-review"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7
 
     @property
     def upload_path(self) -> Path:

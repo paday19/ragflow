@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.database import KnowledgeCard
-from app.deps import get_db
+from app.database import KnowledgeCard, User
+from app.deps import get_current_user, get_db
 from app.schemas import KnowledgeCardOut
+from app.utils.ownership import get_owned_card, get_owned_subject, owned_subject_ids
 
 router = APIRouter(prefix="/knowledge-cards", tags=["knowledge-cards"])
 
@@ -12,11 +13,22 @@ router = APIRouter(prefix="/knowledge-cards", tags=["knowledge-cards"])
 def list_knowledge_cards(
     subject_id: str | None = Query(default=None, alias="subject_id"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    q = db.query(KnowledgeCard)
+    subject_ids = owned_subject_ids(db, user)
+    if not subject_ids:
+        return []
+
     if subject_id:
-        q = q.filter(KnowledgeCard.subject_id == subject_id)
-    cards = q.order_by(KnowledgeCard.created_at.desc()).all()
+        get_owned_subject(db, subject_id, user)
+        subject_ids = [subject_id]
+
+    cards = (
+        db.query(KnowledgeCard)
+        .filter(KnowledgeCard.subject_id.in_(subject_ids))
+        .order_by(KnowledgeCard.created_at.desc())
+        .all()
+    )
     return [
         KnowledgeCardOut(
             id=c.id,
@@ -32,10 +44,12 @@ def list_knowledge_cards(
 
 
 @router.delete("/{card_id}", status_code=204)
-def delete_knowledge_card(card_id: str, db: Session = Depends(get_db)):
-    card = db.get(KnowledgeCard, card_id)
-    if not card:
-        raise HTTPException(status_code=404, detail="知识卡片不存在")
+def delete_knowledge_card(
+    card_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = get_owned_card(db, card_id, user)
     db.delete(card)
     db.commit()
     return None

@@ -104,3 +104,26 @@ class StatsOut(CamelModel):
     card_count: int
     wrong_count: int
     session_count: int
+
+
+class UserRegister(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class UserLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserOut(CamelModel):
+    id: str
+    username: str
+    email: str | None = None
+    created_at: datetime
+
+
+class AuthTokenOut(CamelModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut

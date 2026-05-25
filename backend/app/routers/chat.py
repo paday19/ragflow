@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 from sqlalchemy.orm import Session
 
-from app.deps import get_db
+from app.database import User
+from app.deps import get_current_user, get_db
 from app.schemas import CamelModel
 from app.services.chat import chat_with_model
 from app.services.ragflow import RagflowError
+from app.utils.ownership import get_owned_subject
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -26,7 +28,14 @@ class ChatResponse(CamelModel):
 
 
 @router.post("", response_model=ChatResponse)
-async def send_chat_message(body: ChatRequest, db: Session = Depends(get_db)):
+async def send_chat_message(
+    body: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if body.subject_id:
+        get_owned_subject(db, body.subject_id, user)
+
     try:
         reply = await chat_with_model(
             db,

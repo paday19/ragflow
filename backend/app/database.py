@@ -11,15 +11,31 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    subjects: Mapped[list["Subject"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+
+
 class Subject(Base):
     __tablename__ = "subjects"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     ragflow_dataset_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
+    owner: Mapped["User | None"] = relationship(back_populates="subjects")
     materials: Mapped[list["Material"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
     knowledge_cards: Mapped[list["KnowledgeCard"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
 
@@ -95,6 +111,7 @@ def _upgrade_schema() -> None:
     alters = [
         "ALTER TABLE subjects ADD COLUMN ragflow_dataset_id VARCHAR(64) NULL",
         "ALTER TABLE materials ADD COLUMN ragflow_document_id VARCHAR(64) NULL",
+        "ALTER TABLE subjects ADD COLUMN user_id VARCHAR(64) NULL",
     ]
     with engine.connect() as conn:
         for stmt in alters:

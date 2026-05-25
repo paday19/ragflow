@@ -1,4 +1,4 @@
-import { checkApiHealth, isMockMode } from './api.js';
+import { api, checkApiHealth, getAuthUser, isLoggedIn, logout } from './api.js';
 import { renderChat } from './modules/chat.js';
 import { renderDashboard } from './modules/dashboard.js';
 import { renderSubjects } from './modules/subjects.js';
@@ -8,13 +8,13 @@ import { renderWrongBook } from './modules/wrong-book.js';
 import { renderHistory } from './modules/history.js';
 
 const PAGE_TITLES = {
-  dashboard: '\u4eea\u8868\u76d8',
-  subjects: '\u79d1\u76ee\u7ba1\u7406',
-  'knowledge-cards': '\u77e5\u8bc6\u5361\u7247',
-  chat: '\u667a\u80fd\u95ee\u7b54',
-  practice: '\u7ec3\u4e60\u62bd\u67e5',
-  'wrong-book': '\u9519\u9898\u672c',
-  history: '\u7ec3\u4e60\u5386\u53f2',
+  dashboard: '仪表盘',
+  subjects: '科目管理',
+  'knowledge-cards': '知识卡片',
+  chat: '智能问答',
+  practice: '练习抽查',
+  'wrong-book': '错题本',
+  history: '练习历史',
 };
 
 const pages = {
@@ -52,22 +52,57 @@ function initNavigation() {
   document.getElementById('menuToggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('open');
   });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => logout());
+}
+
+function requireAuth() {
+  if (!isLoggedIn()) {
+    window.location.href = 'index.html';
+    return false;
+  }
+  return true;
+}
+
+function showAccount() {
+  const user = getAuthUser();
+  const emailEl = document.getElementById('accountEmail');
+  if (emailEl && user) {
+    emailEl.textContent = user.email || user.username || '';
+  }
 }
 
 async function init() {
+  if (!requireAuth()) return;
+
   initNavigation();
+  showAccount();
 
   const online = await checkApiHealth();
   const statusEl = document.getElementById('apiStatus');
-  statusEl.textContent = online ? 'API \u5df2\u8fde\u63a5' : '\u672c\u5730\u6a21\u5f0f';
-  statusEl.parentElement.style.borderColor = online
-    ? 'rgba(16, 185, 129, 0.3)'
-    : 'rgba(245, 158, 11, 0.3)';
-  statusEl.parentElement.style.color = online ? 'var(--success)' : 'var(--warning)';
+  if (!online) {
+    statusEl.textContent = '后端未连接';
+    statusEl.parentElement.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+    statusEl.parentElement.style.color = 'var(--danger, #ef4444)';
+  } else {
+    try {
+      const me = await api.fetchMe();
+      const emailEl = document.getElementById('accountEmail');
+      if (emailEl && me?.email) {
+        emailEl.textContent = me.email;
+      }
+      statusEl.textContent = 'API 已连接';
+      statusEl.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      statusEl.parentElement.style.color = 'var(--success)';
+    } catch {
+      logout();
+      return;
+    }
+  }
 
   await navigate('dashboard');
 }
 
 init();
 
-export { navigate, isMockMode };
+export { navigate };

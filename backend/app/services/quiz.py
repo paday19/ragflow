@@ -14,16 +14,13 @@ def generate_quiz(db: Session, subject_id: str, count: int) -> list[QuizQuestion
         .all()
     )
     if not cards:
-        cards = db.query(KnowledgeCard).all()
-    if not cards:
         return []
 
     selected = random.sample(cards, k=min(count, len(cards)))
-    all_cards = db.query(KnowledgeCard).all()
     questions: list[QuizQuestionOut] = []
 
     for card in selected:
-        pool = [c for c in all_cards if c.id != card.id]
+        pool = [c for c in cards if c.id != card.id]
         distractors = random.sample([c.summary for c in pool], k=min(3, len(pool))) if pool else []
         while len(distractors) < 3:
             distractors.append("以上都不正确")

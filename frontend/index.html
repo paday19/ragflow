@@ -1,92 +1,69 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAGFlow &#22797;&#20064;&#21161;&#25163;</title>
+  <title>登录 - RAGFlow 复习助手</title>
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
 </head>
 
-<body>
-  <div class="app-layout">
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <div class="logo-icon">&#9889;</div>
-          <div>
-            <div class="logo-text">RAGFlow</div>
-            <div class="logo-subtitle">REVIEW ASSISTANT</div>
-          </div>
-        </div>
+<body class="auth-page">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="logo-icon auth-logo">⚡</div>
+        <h1 class="auth-title">RAGFlow 复习助手</h1>
+        <p class="auth-subtitle">登录后管理你的科目与知识卡片</p>
       </div>
 
-      <nav class="nav-menu" id="navMenu">
-        <div class="nav-item active" data-page="dashboard">
-          <span class="nav-icon">&#128202;</span>
-          <span>&#20202;&#34920;&#30424;</span>
-        </div>
-        <div class="nav-item" data-page="subjects">
-          <span class="nav-icon">&#128218;</span>
-          <span>&#31185;&#30446;&#31649;&#29702;</span>
-        </div>
-        <div class="nav-item" data-page="knowledge-cards">
-          <span class="nav-icon">&#129504;</span>
-          <span>&#30693;&#35782;&#21345;&#29255;</span>
-        </div>
-        <div class="nav-item" data-page="chat">
-          <span class="nav-icon">&#129302;</span>
-          <span>&#26234;&#33021;&#38382;&#31572;</span>
-        </div>
-        <div class="nav-item" data-page="practice">
-          <span class="nav-icon">&#9998;</span>
-          <span>&#32451;&#20064;&#25277;&#26597;</span>
-        </div>
-        <div class="nav-item" data-page="wrong-book">
-          <span class="nav-icon">&#10060;</span>
-          <span>&#38169;&#39064;&#26412;</span>
-        </div>
-        <div class="nav-item" data-page="history">
-          <span class="nav-icon">&#128203;</span>
-          <span>&#32451;&#20064;&#21382;&#21490;</span>
-        </div>
-      </nav>
-    </aside>
-
-    <main class="main-content">
-      <header class="top-bar">
-        <div class="top-bar-left" style="display:flex;align-items:center;gap:16px;">
-          <button class="menu-toggle" id="menuToggle" aria-label="&#20999;&#25442;&#33756;&#21333;">&#9776;</button>
-          <h1 class="page-title" id="pageTitle">&#20202;&#34920;&#30424;</h1>
-        </div>
-        <div class="top-bar-actions">
-          <span class="status-badge">
-            <span class="status-dot"></span>
-            <span id="apiStatus">&#26412;&#22320;&#27169;&#24335;</span>
-          </span>
-        </div>
-      </header>
-
-      <div class="page-content" id="pageContent"></div>
-    </main>
-  </div>
-
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal" id="modal">
-      <div class="modal-header">
-        <h3 id="modalTitle">&#26631;&#39064;</h3>
-        <button class="btn btn-icon btn-secondary" id="modalClose" aria-label="&#20851;&#38381;">&times;</button>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-tab="login">登录</button>
+        <button type="button" class="auth-tab" data-tab="register">注册</button>
       </div>
-      <div class="modal-body" id="modalBody"></div>
-      <div class="modal-footer" id="modalFooter"></div>
+
+      <form id="loginForm" class="auth-form">
+        <div class="form-group">
+          <label class="form-label" for="loginEmail">邮箱</label>
+          <input class="form-input" type="email" id="loginEmail" name="email" required autocomplete="email"
+            placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">密码</label>
+          <input class="form-input" type="password" id="loginPassword" name="password" required
+            autocomplete="current-password" placeholder="请输入密码">
+        </div>
+        <p class="auth-error" id="loginError" hidden></p>
+        <button type="submit" class="btn btn-primary auth-submit" id="loginSubmit">登录</button>
+      </form>
+
+      <form id="registerForm" class="auth-form" hidden>
+        <div class="form-group">
+          <label class="form-label" for="registerEmail">邮箱</label>
+          <input class="form-input" type="email" id="registerEmail" name="email" required autocomplete="email"
+            placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="registerPassword">密码</label>
+          <input class="form-input" type="password" id="registerPassword" name="password" required minlength="6"
+            autocomplete="new-password" placeholder="至少 6 位">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="registerConfirm">确认密码</label>
+          <input class="form-input" type="password" id="registerConfirm" name="confirmPassword" required minlength="6"
+            autocomplete="new-password" placeholder="再次输入密码">
+        </div>
+        <p class="auth-error" id="registerError" hidden></p>
+        <button type="submit" class="btn btn-primary auth-submit" id="registerSubmit">注册并登录</button>
+      </form>
     </div>
   </div>
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/login.js"></script>
 </body>
 
 </html>

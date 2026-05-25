@@ -1,7 +1,83 @@
 import { generateId, getStore, saveStore, shuffleArray } from './utils.js';
 
 const API_BASE = window.API_BASE_URL || 'http://localhost:8000/api';
+const AUTH_TOKEN_KEY = 'ragflow_auth_token';
+const AUTH_USER_KEY = 'ragflow_auth_user';
 let useMock = true;
+
+export function getToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function getAuthUser() {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isLoggedIn() {
+  return Boolean(getToken());
+}
+
+function setAuth(token, user) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+}
+
+export function clearAuth() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+}
+
+export function logout() {
+  clearAuth();
+  window.location.href = 'index.html';
+}
+
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+async function apiRequest(path, options = {}) {
+  let url = `${API_BASE}${path}`;
+  if (options.query) {
+    url += options.query.startsWith('?') ? options.query : `?${options.query}`;
+  }
+  const headers = authHeaders(options.headers || {});
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const fetchOptions = { ...options, headers };
+  delete fetchOptions.query;
+  delete fetchOptions.timeoutMs;
+  if (options.timeoutMs) {
+    fetchOptions.signal = AbortSignal.timeout(options.timeoutMs);
+  }
+  const res = await fetch(url, fetchOptions);
+  const isCredentialRequest = path === '/auth/login' || path === '/auth/register';
+  if (res.status === 401 && !isCredentialRequest) {
+    clearAuth();
+    if (!window.location.pathname.endsWith('index.html') && !window.location.pathname.endsWith('/')) {
+      window.location.href = 'index.html';
+    }
+    throw new Error('登录已过期，请重新登录');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail;
+    throw new Error(typeof detail === 'string' ? detail : detail?.message || err.message || `请求失败 (${res.status})`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
 
 export async function checkApiHealth() {
   try {
@@ -21,30 +97,13 @@ export function isMockMode() {
 }
 
 async function request(path, options = {}) {
+  if (path.startsWith('/auth')) {
+    return apiRequest(path, options);
+  }
   if (useMock) {
     return mockRequest(path, options);
   }
-  let url = `${API_BASE}${path}`;
-  if (options.query) {
-    url += options.query.startsWith('?') ? options.query : `?${options.query}`;
-  }
-  const headers = { ...options.headers };
-  if (!(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
-  }
-  const fetchOptions = { ...options, headers };
-  delete fetchOptions.query;
-  delete fetchOptions.timeoutMs;
-  if (options.timeoutMs) {
-    fetchOptions.signal = AbortSignal.timeout(options.timeoutMs);
-  }
-  const res = await fetch(url, fetchOptions);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.message || `请求失败 (${res.status})`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
+  return apiRequest(path, options);
 }
 
 async function delay(ms) {
@@ -71,8 +130,14 @@ async function extractConceptsWithProgress(subjectId, onProgress) {
 
   const res = await fetch(`${API_BASE}/subjects/${subjectId}/extract/stream`, {
     method: 'POST',
-    headers: { Accept: 'text/event-stream' },
+    headers: authHeaders({ Accept: 'text/event-stream' }),
   });
+
+  if (res.status === 401) {
+    clearAuth();
+    window.location.href = 'index.html';
+    throw new Error('登录已过期，请重新登录');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -327,6 +392,24 @@ function submitPractice(body, store) {
 }
 
 export const api = {
+  login: async (email, password) => {
+    const data = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setAuth(data.accessToken || data.access_token, data.user);
+    return data;
+  },
+  register: async (email, password) => {
+    const data = await apiRequest('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setAuth(data.accessToken || data.access_token, data.user);
+    return data;
+  },
+  fetchMe: () => apiRequest('/auth/me'),
+  logout,
   getStats: () => request('/stats'),
   getSubjects: () => request('/subjects'),
   createSubject: (data) => request('/subjects', { method: 'POST', body: JSON.stringify(data) }),
@@ -338,7 +421,16 @@ export const api = {
     if (useMock) {
       return mockRequest(`/subjects/${subjectId}/materials`, { method: 'POST', body: formData });
     }
-    return fetch(`${API_BASE}/subjects/${subjectId}/materials`, { method: 'POST', body: formData }).then(async (r) => {
+    return fetch(`${API_BASE}/subjects/${subjectId}/materials`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData,
+    }).then(async (r) => {
+      if (r.status === 401) {
+        clearAuth();
+        window.location.href = 'index.html';
+        throw new Error('登录已过期，请重新登录');
+      }
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         throw new Error(err.detail || err.message || `上传失败 (${r.status})`);

@@ -3,22 +3,33 @@ from datetime import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import PracticeSession, WrongAnswer
-from app.deps import get_db
+from app.database import PracticeSession, User, WrongAnswer
+from app.deps import get_current_user, get_db
 from app.schemas import PracticeSubmitOut, PracticeSubmitRequest, PracticeSessionOut, QuizGenerateRequest, QuizQuestionOut
 from app.services.quiz import generate_quiz
 from app.utils.id_gen import new_id
+from app.utils.ownership import get_owned_subject
 
 router = APIRouter(prefix="/practice", tags=["practice"])
 
 
 @router.post("/generate", response_model=list[QuizQuestionOut])
-def generate_practice(body: QuizGenerateRequest, db: Session = Depends(get_db)):
+def generate_practice(
+    body: QuizGenerateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_owned_subject(db, body.subject_id, user)
     return generate_quiz(db, body.subject_id, body.count)
 
 
 @router.post("/submit", response_model=PracticeSubmitOut)
-def submit_practice(body: PracticeSubmitRequest, db: Session = Depends(get_db)):
+def submit_practice(
+    body: PracticeSubmitRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_owned_subject(db, body.subject_id, user)
     correct = sum(1 for a in body.answers if a.is_correct)
     now = datetime.utcnow()
 

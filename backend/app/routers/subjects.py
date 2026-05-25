@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 import asyncio
 import json
 
@@ -8,12 +7,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database import KnowledgeCard, Material, Subject
-from app.deps import get_db
+from app.database import KnowledgeCard, Material, Subject, User
+from app.deps import get_current_user, get_db
 from app.schemas import KnowledgeCardOut, MaterialOut, SubjectCreate, SubjectOut
 from app.config import get_settings
 from app.services.extract import RagflowError, extract_concepts_from_subject
 from app.utils.id_gen import new_id
+from app.utils.ownership import get_owned_subject
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
 
@@ -63,15 +63,28 @@ def _subject_out(db: Session, subject: Subject) -> SubjectOut:
 
 
 @router.get("", response_model=list[SubjectOut])
-def list_subjects(db: Session = Depends(get_db)):
-    subjects = db.query(Subject).order_by(Subject.created_at.desc()).all()
+def list_subjects(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    subjects = (
+        db.query(Subject)
+        .filter(Subject.user_id == user.id)
+        .order_by(Subject.created_at.desc())
+        .all()
+    )
     return [_subject_out(db, s) for s in subjects]
 
 
 @router.post("", response_model=SubjectOut, status_code=201)
-def create_subject(body: SubjectCreate, db: Session = Depends(get_db)):
+def create_subject(
+    body: SubjectCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     subject = Subject(
         id=new_id(),
+        user_id=user.id,
         name=body.name.strip(),
         description=body.description.strip(),
         created_at=datetime.utcnow(),
@@ -83,19 +96,24 @@ def create_subject(body: SubjectCreate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{subject_id}", status_code=204)
-def delete_subject(subject_id: str, db: Session = Depends(get_db)):
-    subject = db.get(Subject, subject_id)
-    if not subject:
-        raise HTTPException(status_code=404, detail="科目不存在")
+def delete_subject(
+    subject_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    subject = get_owned_subject(db, subject_id, user)
     db.delete(subject)
     db.commit()
     return None
 
 
 @router.get("/{subject_id}/materials", response_model=list[MaterialOut])
-def list_materials(subject_id: str, db: Session = Depends(get_db)):
-    if not db.get(Subject, subject_id):
-        raise HTTPException(status_code=404, detail="科目不存在")
+def list_materials(
+    subject_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_owned_subject(db, subject_id, user)
     materials = (
         db.query(Material)
         .filter(Material.subject_id == subject_id)
@@ -120,15 +138,14 @@ async def upload_materials(
     subject_id: str,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    subject = db.get(Subject, subject_id)
-    if not subject:
-        raise HTTPException(status_code=404, detail="科目不存在")
+    subject = get_owned_subject(db, subject_id, user)
     if not files:
         raise HTTPException(status_code=400, detail="请上传至少一个文件")
 
     settings = get_settings()
-    subject_dir = settings.upload_path / subject_id
+    subject_dir = settings.upload_path / user.id / subject.id
     subject_dir.mkdir(parents=True, exist_ok=True)
 
     created: list[MaterialOut] = []
@@ -163,10 +180,12 @@ async def upload_materials(
 
 
 @router.post("/{subject_id}/extract", response_model=list[KnowledgeCardOut])
-async def extract_subject_concepts(subject_id: str, db: Session = Depends(get_db)):
-    subject = db.get(Subject, subject_id)
-    if not subject:
-        raise HTTPException(status_code=404, detail="科目不存在")
+async def extract_subject_concepts(
+    subject_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    subject = get_owned_subject(db, subject_id, user)
 
     materials = db.query(Material).filter(Material.subject_id == subject_id).all()
     if not materials:
@@ -183,10 +202,12 @@ async def extract_subject_concepts(subject_id: str, db: Session = Depends(get_db
 
 
 @router.post("/{subject_id}/extract/stream")
-async def extract_subject_concepts_stream(subject_id: str, db: Session = Depends(get_db)):
-    subject = db.get(Subject, subject_id)
-    if not subject:
-        raise HTTPException(status_code=404, detail="科目不存在")
+async def extract_subject_concepts_stream(
+    subject_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    subject = get_owned_subject(db, subject_id, user)
 
     materials = db.query(Material).filter(Material.subject_id == subject_id).all()
     if not materials:

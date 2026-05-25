@@ -123,12 +123,10 @@ function openCardDetail(card, subjects) {
         </div>
         <div class="card-detail-section">
           <label class="form-label">\u7b80\u4ecb</label>
-          <p class="card-detail-hint">AI \u6839\u636e\u4e0a\u4f20\u8d44\u6599\u751f\u6210\uff0c\u4e00\u53e5\u8bdd\u4e0d\u8d85\u8fc720\u5b57</p>
           <p class="card-detail-text">${nl2br(card.summary)}</p>
         </div>
         <div class="card-detail-section">
           <label class="form-label">\u8be6\u7ec6\u8bf4\u660e</label>
-          <p class="card-detail-hint">AI \u6839\u636e\u4e0a\u4f20\u5185\u5bb9\u751f\u6210\uff0c\u4e0d\u8d85\u8fc75\u53e5\u8bdd</p>
           <div class="card-detail-full">${nl2br(card.detail || '\u6682\u65e0\u8be6\u7ec6\u8bf4\u660e')}</div>
         </div>
         <div class="card-detail-footer">
