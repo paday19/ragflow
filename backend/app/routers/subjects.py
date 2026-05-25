@@ -2,14 +2,16 @@ from datetime import datetime
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import KnowledgeCard, Material, Subject, User
 from app.deps import get_current_user, get_db
-from app.schemas import KnowledgeCardOut, MaterialOut, SubjectCreate, SubjectOut
+from app.schemas import ExtractRequest, KnowledgeCardOut, MaterialOut, SubjectCreate, SubjectOut
 from app.config import get_settings
 from app.services.extract import RagflowError, extract_concepts_from_subject
 from app.utils.id_gen import new_id
@@ -179,12 +181,33 @@ async def upload_materials(
     return created
 
 
-@router.post("/{subject_id}/extract", response_model=list[KnowledgeCardOut])
-async def extract_subject_concepts(
+@router.delete("/{subject_id}/materials/{material_id}", status_code=204)
+def delete_material(
     subject_id: str,
+    material_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    get_owned_subject(db, subject_id, user)
+    material = db.get(Material, material_id)
+    if not material or material.subject_id != subject_id:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    if material.file_path:
+        Path(material.file_path).unlink(missing_ok=True)
+    db.delete(material)
+    db.commit()
+    return None
+
+
+@router.post("/{subject_id}/extract", response_model=list[KnowledgeCardOut])
+async def extract_subject_concepts(
+    subject_id: str,
+    body: ExtractRequest | None = None,
+    count: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card_count = body.count if body else count
     subject = get_owned_subject(db, subject_id, user)
 
     materials = db.query(Material).filter(Material.subject_id == subject_id).all()
@@ -192,7 +215,9 @@ async def extract_subject_concepts(
         raise HTTPException(status_code=400, detail="请先上传资料")
 
     try:
-        concepts = await extract_concepts_from_subject(db, subject, materials)
+        concepts = await extract_concepts_from_subject(
+            db, subject, materials, count=card_count
+        )
     except RagflowError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -204,10 +229,12 @@ async def extract_subject_concepts(
 @router.post("/{subject_id}/extract/stream")
 async def extract_subject_concepts_stream(
     subject_id: str,
+    count: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     subject = get_owned_subject(db, subject_id, user)
+    card_count = count
 
     materials = db.query(Material).filter(Material.subject_id == subject_id).all()
     if not materials:
@@ -220,7 +247,9 @@ async def extract_subject_concepts_stream(
 
     async def worker() -> None:
         try:
-            concepts = await extract_concepts_from_subject(db, subject, materials, on_progress=on_progress)
+            concepts = await extract_concepts_from_subject(
+                db, subject, materials, on_progress=on_progress, count=card_count
+            )
             if not concepts:
                 await queue.put({"type": "error", "message": "未能从资料中抽取到专业术语，请检查文件内容"})
                 return

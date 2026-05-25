@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import KnowledgeCard, User
@@ -41,6 +41,18 @@ def list_knowledge_cards(
         )
         for c in cards
     ]
+
+
+@router.delete("", status_code=204)
+def delete_knowledge_cards_by_subject(
+    subject_id: str = Query(..., alias="subject_id"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_owned_subject(db, subject_id, user)
+    db.query(KnowledgeCard).filter(KnowledgeCard.subject_id == subject_id).delete()
+    db.commit()
+    return None
 
 
 @router.delete("/{card_id}", status_code=204)

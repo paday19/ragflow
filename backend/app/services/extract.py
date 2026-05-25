@@ -292,10 +292,10 @@ def _normalize_cards(raw_items: list[dict], subject_name: str, source_hint: str)
     return cards
 
 
-async def _extract_with_llm(subject_name: str, corpus: str, source_hint: str) -> list[dict]:
+async def _extract_with_llm(subject_name: str, corpus: str, source_hint: str, count: int = 10) -> list[dict]:
     client = RagflowClient()
-    raw = await client.chat_extract_concepts(subject_name, corpus)
-    return _normalize_cards(raw, subject_name, source_hint)
+    raw = await client.chat_extract_concepts(subject_name, corpus, count)
+    return _normalize_cards(raw, subject_name, source_hint)[:count]
 
 
 def _read_local_corpus(materials: list[Material]) -> str:
@@ -314,7 +314,9 @@ async def extract_concepts_from_subject(
     subject: Subject,
     materials: list[Material],
     on_progress: ProgressCallback | None = None,
+    count: int = 10,
 ) -> list[dict]:
+    count = max(1, min(50, count))
     settings = get_settings()
     file_materials = [m for m in materials if m.file_path and Path(m.file_path).exists()]
     if not file_materials:
@@ -339,9 +341,9 @@ async def extract_concepts_from_subject(
                 raise RagflowError("RAGFlow 解析后未获取到文本内容")
 
             _report(on_progress, 65, "AI 分析并抽取专业术语…")
-            raw = await client.chat_extract_concepts(subject.name, corpus)
+            raw = await client.chat_extract_concepts(subject.name, corpus, count)
             _report(on_progress, 80, "整理知识卡片…")
-            cards = _normalize_cards(raw, subject.name, source_hint)
+            cards = _normalize_cards(raw, subject.name, source_hint)[:count]
             if cards:
                 _report(on_progress, 90, f"已抽取 {len(cards)} 个术语")
                 return cards
@@ -355,7 +357,7 @@ async def extract_concepts_from_subject(
         if local_corpus.strip():
             try:
                 _report(on_progress, 68, "使用本地资料调用 AI 抽取…")
-                cards = await _extract_with_llm(subject.name, local_corpus, source_hint)
+                cards = await _extract_with_llm(subject.name, local_corpus, source_hint, count)
                 if cards:
                     _report(on_progress, 90, f"已抽取 {len(cards)} 个术语")
                     return cards
@@ -370,6 +372,6 @@ async def extract_concepts_from_subject(
         _local_extract(subject.name, [(m.name, Path(m.file_path)) for m in file_materials]),
         subject.name,
         source_hint,
-    )
+    )[:count]
     _report(on_progress, 90, f"已抽取 {len(cards)} 个术语")
     return cards

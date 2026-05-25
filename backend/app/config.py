@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BACKEND_ROOT.parent
 
 
 class Settings(BaseSettings):
@@ -16,7 +17,9 @@ class Settings(BaseSettings):
     ragflow_chat_id: str = ""
     ragflow_parse_timeout: int = 300
     ragflow_parse_poll_interval: int = 3
-    cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
+    serve_frontend: bool = True
+    frontend_dir: str = ".."
+    cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080,http://localhost:8000,http://127.0.0.1:8000"
     jwt_secret: str = "change-me-in-production-ragflow-review"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
@@ -25,6 +28,11 @@ class Settings(BaseSettings):
     def upload_path(self) -> Path:
         path = BACKEND_ROOT / self.upload_dir
         path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def frontend_path(self) -> Path:
+        path = (BACKEND_ROOT / self.frontend_dir).resolve()
         return path
 
     @property

@@ -36,6 +36,10 @@ class MaterialOut(CamelModel):
     uploaded_at: datetime
 
 
+class ExtractRequest(BaseModel):
+    count: int = Field(default=10, ge=1, le=50)
+
+
 class KnowledgeCardOut(CamelModel):
     id: str
     subject_id: str

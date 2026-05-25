@@ -1,6 +1,6 @@
 import { generateId, getStore, saveStore, shuffleArray } from './utils.js';
 
-const API_BASE = window.API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE = window.API_BASE_URL || '/api';
 const AUTH_TOKEN_KEY = 'ragflow_auth_token';
 const AUTH_USER_KEY = 'ragflow_auth_user';
 let useMock = true;
@@ -34,7 +34,7 @@ export function clearAuth() {
 
 export function logout() {
   clearAuth();
-  window.location.href = 'index.html';
+  window.location.href = '/';
 }
 
 function authHeaders(extra = {}) {
@@ -65,8 +65,8 @@ async function apiRequest(path, options = {}) {
   const isCredentialRequest = path === '/auth/login' || path === '/auth/register';
   if (res.status === 401 && !isCredentialRequest) {
     clearAuth();
-    if (!window.location.pathname.endsWith('index.html') && !window.location.pathname.endsWith('/')) {
-      window.location.href = 'index.html';
+    if (window.location.pathname !== '/' && !window.location.pathname.endsWith('/index.html')) {
+      window.location.href = '/';
     }
     throw new Error('登录已过期，请重新登录');
   }
@@ -106,11 +106,85 @@ async function request(path, options = {}) {
   return apiRequest(path, options);
 }
 
+async function mockUploadWithProgress(subjectId, formData, onProgress) {
+  const steps = [
+    [12, '\u51c6\u5907\u4e0a\u4f20\u2026'],
+    [35, '\u6b63\u5728\u4e0a\u4f20\u6587\u4ef6\u2026'],
+    [68, '\u670d\u52a1\u5668\u5904\u7406\u4e2d\u2026'],
+    [92, '\u5373\u5c06\u5b8c\u6210\u2026'],
+  ];
+  for (const [p, m] of steps) {
+    onProgress?.(p, m);
+    await delay(280);
+  }
+  const result = await mockRequest(`/subjects/${subjectId}/materials`, { method: 'POST', body: formData });
+  onProgress?.(100, '\u4e0a\u4f20\u5b8c\u6210');
+  return result;
+}
+
+function uploadMaterialsWithProgress(subjectId, files, onProgress) {
+  const formData = new FormData();
+  files.forEach((f) => formData.append('files', f));
+
+  if (useMock) {
+    return mockUploadWithProgress(subjectId, formData, onProgress);
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/subjects/${subjectId}/materials`);
+    const token = getToken();
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        const pct = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        onProgress?.(pct, `\u4e0a\u4f20\u4e2d\u2026 ${pct}%`);
+      } else {
+        onProgress?.(30, '\u4e0a\u4f20\u4e2d\u2026');
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        clearAuth();
+        window.location.href = '/';
+        reject(new Error('\u767b\u5f55\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55'));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100, '\u4e0a\u4f20\u5b8c\u6210');
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error('\u4e0a\u4f20\u54cd\u5e94\u89e3\u6790\u5931\u8d25'));
+        }
+        return;
+      }
+      let detail = `\u4e0a\u4f20\u5931\u8d25 (${xhr.status})`;
+      try {
+        const err = JSON.parse(xhr.responseText);
+        detail = err.detail || err.message || detail;
+      } catch {
+        /* ignore */
+      }
+      reject(new Error(typeof detail === 'string' ? detail : detail?.message || detail));
+    };
+
+    xhr.onerror = () => reject(new Error('\u7f51\u7edc\u9519\u8bef\uff0c\u4e0a\u4f20\u5931\u8d25'));
+    xhr.onabort = () => reject(new Error('\u4e0a\u4f20\u5df2\u53d6\u6d88'));
+    xhr.send(formData);
+  });
+}
+
 async function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function extractConceptsWithProgress(subjectId, onProgress) {
+async function extractConceptsWithProgress(subjectId, onProgress, count = 10) {
+  const cardCount = Math.max(1, Math.min(50, Number(count) || 10));
   if (useMock) {
     const steps = [
       [8, '\u8bfb\u53d6\u8d44\u6599\u6587\u4ef6\u2026'],
@@ -123,19 +197,19 @@ async function extractConceptsWithProgress(subjectId, onProgress) {
       onProgress?.(p, m);
       await delay(450);
     }
-    const cards = await mockRequest(`/subjects/${subjectId}/extract`, { method: 'POST' });
+    const cards = await mockRequest(`/subjects/${subjectId}/extract?count=${cardCount}`, { method: 'POST' });
     onProgress?.(100, `\u5b8c\u6210\uff0c\u5171\u62bd\u53d6 ${cards.length} \u4e2a\u672f\u8bed`);
     return cards;
   }
 
-  const res = await fetch(`${API_BASE}/subjects/${subjectId}/extract/stream`, {
+  const res = await fetch(`${API_BASE}/subjects/${subjectId}/extract/stream?count=${cardCount}`, {
     method: 'POST',
     headers: authHeaders({ Accept: 'text/event-stream' }),
   });
 
   if (res.status === 401) {
     clearAuth();
-    window.location.href = 'index.html';
+    window.location.href = '/';
     throw new Error('登录已过期，请重新登录');
   }
 
@@ -208,6 +282,14 @@ async function mockRequest(path, options = {}) {
     saveStore(store);
     return null;
   }
+  if (path.match(/^\/subjects\/[^/]+\/materials\/[^/]+$/) && method === 'DELETE') {
+    const parts = path.split('/');
+    const subjectId = parts[2];
+    const materialId = parts[4];
+    store.materials = store.materials.filter((m) => !(m.id === materialId && m.subjectId === subjectId));
+    saveStore(store);
+    return null;
+  }
   if (path.match(/^\/subjects\/[^/]+\/materials$/) && method === 'GET') {
     const subjectId = path.split('/')[2];
     return store.materials.filter((m) => m.subjectId === subjectId);
@@ -228,9 +310,11 @@ async function mockRequest(path, options = {}) {
     saveStore(store);
     return added;
   }
-  if (path.match(/^\/subjects\/[^/]+\/extract$/) && method === 'POST') {
+  if (path.match(/^\/subjects\/[^/]+\/extract/) && method === 'POST') {
     const subjectId = path.split('/')[2];
-    const cards = mockExtractConcepts(subjectId, store);
+    const url = new URL(`http://x${path}${options.query || ''}`);
+    const count = Math.max(1, Math.min(50, Number(url.searchParams.get('count')) || 10));
+    const cards = mockExtractConcepts(subjectId, store, count);
     store.knowledgeCards.push(...cards);
     saveStore(store);
     return cards;
@@ -241,6 +325,15 @@ async function mockRequest(path, options = {}) {
     let cards = store.knowledgeCards;
     if (subjectId) cards = cards.filter((c) => c.subjectId === subjectId);
     return cards;
+  }
+  if (path === '/knowledge-cards' && method === 'DELETE') {
+    const url = new URL(`http://x${path}${options.query || ''}`);
+    const subjectId = url.searchParams.get('subject_id');
+    if (subjectId) {
+      store.knowledgeCards = store.knowledgeCards.filter((c) => c.subjectId !== subjectId);
+    }
+    saveStore(store);
+    return null;
   }
   if (path.match(/^\/knowledge-cards\/[^/]+$/) && method === 'DELETE') {
     const id = path.split('/')[2];
@@ -302,7 +395,7 @@ function enrichSubject(subject) {
   };
 }
 
-function mockExtractConcepts(subjectId, store) {
+function mockExtractConcepts(subjectId, store, count = 10) {
   const materials = store.materials.filter((m) => m.subjectId === subjectId);
   const subject = store.subjects.find((s) => s.id === subjectId);
   const templates = [
@@ -315,8 +408,9 @@ function mockExtractConcepts(subjectId, store) {
 
   const base = subject?.name || '\u8d44\u6599';
   const source = materials.length ? materials[0].name : '\u9ed8\u8ba4\u8d44\u6599';
+  const n = Math.max(1, Math.min(50, count));
 
-  return templates.map((t) => ({
+  return templates.slice(0, n).map((t) => ({
     id: generateId(),
     subjectId,
     concept: base + ' \u00b7 ' + t.concept,
@@ -415,35 +509,19 @@ export const api = {
   createSubject: (data) => request('/subjects', { method: 'POST', body: JSON.stringify(data) }),
   deleteSubject: (id) => request(`/subjects/${id}`, { method: 'DELETE' }),
   getMaterials: (subjectId) => request(`/subjects/${subjectId}/materials`),
-  uploadMaterials: (subjectId, files) => {
-    const formData = new FormData();
-    files.forEach((f) => formData.append('files', f));
-    if (useMock) {
-      return mockRequest(`/subjects/${subjectId}/materials`, { method: 'POST', body: formData });
-    }
-    return fetch(`${API_BASE}/subjects/${subjectId}/materials`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: formData,
-    }).then(async (r) => {
-      if (r.status === 401) {
-        clearAuth();
-        window.location.href = 'index.html';
-        throw new Error('登录已过期，请重新登录');
-      }
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || err.message || `上传失败 (${r.status})`);
-      }
-      return r.json();
-    });
-  },
-  extractConcepts: (subjectId, onProgress) => extractConceptsWithProgress(subjectId, onProgress),
+  uploadMaterials: (subjectId, files, onProgress) =>
+    uploadMaterialsWithProgress(subjectId, files, onProgress),
+  deleteMaterial: (subjectId, materialId) =>
+    request(`/subjects/${subjectId}/materials/${materialId}`, { method: 'DELETE' }),
+  extractConcepts: (subjectId, onProgress, count = 10) =>
+    extractConceptsWithProgress(subjectId, onProgress, count),
   getKnowledgeCards: (subjectId) => {
     const q = subjectId ? `?subject_id=${subjectId}` : '';
     return request(`/knowledge-cards`, { query: q });
   },
   deleteKnowledgeCard: (id) => request(`/knowledge-cards/${id}`, { method: 'DELETE' }),
+  deleteKnowledgeCardsBySubject: (subjectId) =>
+    request('/knowledge-cards', { method: 'DELETE', query: `?subject_id=${subjectId}` }),
   generateQuiz: (subjectId, count) =>
     request('/practice/generate', { method: 'POST', body: JSON.stringify({ subject_id: subjectId, count }) }),
   submitPractice: (data) => request('/practice/submit', { method: 'POST', body: JSON.stringify(data) }),

@@ -217,8 +217,8 @@ class RagflowClient:
         )
         return self._cached_chat_id
 
-    async def chat_extract_concepts(self, subject_name: str, corpus: str) -> list[dict]:
-        prompt = self._build_extraction_prompt(subject_name, corpus)
+    async def chat_extract_concepts(self, subject_name: str, corpus: str, count: int = 10) -> list[dict]:
+        prompt = self._build_extraction_prompt(subject_name, corpus, count)
         content = await self._call_llm(prompt)
         return self._parse_concept_json(content)
 
@@ -305,7 +305,8 @@ class RagflowClient:
         return last
 
     @staticmethod
-    def _build_extraction_prompt(subject_name: str, corpus: str) -> str:
+    def _build_extraction_prompt(subject_name: str, corpus: str, count: int = 10) -> str:
+        count = max(1, min(50, count))
         return f"""你是一位专业的学习资料分析助手。请仔细阅读以下「{subject_name}」课程资料原文，抽取其中的**专业术语**并生成知识卡片。
 
 **只抽取专业术语（必须来自资料原文）：**
@@ -331,7 +332,7 @@ class RagflowClient:
 
 **输出要求：**
 - 仅返回 JSON 数组，不要 markdown，不要其他文字
-- 抽取 8-15 个最重要的专业术语，按重要性排序
+- 抽取 {count} 个最重要的专业术语，按重要性排序
 - summary 严格不超过20字，detail 严格不超过5句，内容必须能在资料中找到依据
 
 **资料原文：**

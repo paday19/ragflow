@@ -6,41 +6,68 @@ let pageSubjects = [];
 
 export async function renderKnowledgeCards(container) {
   container.innerHTML = '<div class="page-loading"><div class="loading-spinner"></div></div>';
-
   const [subjects, cards] = await Promise.all([api.getSubjects(), api.getKnowledgeCards()]);
   pageSubjects = subjects;
   cardsCache = cards;
 
   container.innerHTML = `
     <div class="section-header">
-      <h2 class="section-title">\u77e5\u8bc6\u5361\u7247</h2>
+      <h2 class="section-title">知识卡片</h2>
     </div>
     <div class="filter-bar">
       <select class="form-select" id="filterSubject">
-        <option value="">\u5168\u90e8\u79d1\u76ee</option>
+        <option value="">全部科目</option>
         ${subjects.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
       </select>
-      <span id="cardsCountHint" style="color:var(--text-muted);font-size:0.85rem;font-family:var(--font-mono);">\u5171 ${cards.length} \u5f20\u5361\u7247 \u00b7 \u70b9\u51fb\u67e5\u770b\u8be6\u60c5</span>
+      <button class="btn btn-danger btn-sm" id="btnDeleteAllBySubject" hidden>删除本科目全部卡片</button>
+      <span id="cardsCountHint" style="color:var(--text-muted);font-size:0.85rem;font-family:var(--font-mono);">共 ${cards.length} 张卡片 · 点击查看详情</span>
     </div>
     <div id="cardsContainer">
       ${renderCardsGrid(cards, subjects)}
     </div>
   `;
 
-  document.getElementById('filterSubject').addEventListener('change', async (e) => {
-    const filtered = await api.getKnowledgeCards(e.target.value || undefined);
+  const filterEl = document.getElementById('filterSubject');
+  const deleteAllBtn = document.getElementById('btnDeleteAllBySubject');
+
+  function updateBulkActions() {
+    deleteAllBtn.hidden = !filterEl.value;
+  }
+
+  filterEl.addEventListener('change', async (e) => {
+    const subjectId = e.target.value || undefined;
+    const filtered = await api.getKnowledgeCards(subjectId);
     cardsCache = filtered;
     document.getElementById('cardsContainer').innerHTML = renderCardsGrid(filtered, subjects);
     updateCountHint(filtered.length);
+    updateBulkActions();
     bindCardEvents(document.getElementById('cardsContainer'), subjects);
   });
 
+  deleteAllBtn.addEventListener('click', async () => {
+    const subjectId = filterEl.value;
+    if (!subjectId) return;
+    const subject = subjects.find((s) => s.id === subjectId);
+    const name = subject?.name || '该科目';
+    if (!confirm(`确定删除「${name}」下的全部 ${cardsCache.length} 张知识卡片吗？此操作不可恢复。`)) return;
+    try {
+      await api.deleteKnowledgeCardsBySubject(subjectId);
+      cardsCache = [];
+      document.getElementById('cardsContainer').innerHTML = renderCardsGrid([], subjects);
+      updateCountHint(0);
+      showToast('已删除本科目全部卡片', 'success');
+    } catch (err) {
+      showToast(err.message || '删除失败', 'error');
+    }
+  });
+
+  updateBulkActions();
   bindCardEvents(document.getElementById('cardsContainer'), subjects);
 }
 
 function updateCountHint(count) {
   document.getElementById('cardsCountHint').textContent =
-    `\u5171 ${count} \u5f20\u5361\u7247 \u00b7 \u70b9\u51fb\u67e5\u770b\u8be6\u60c5`;
+    `共 ${count} 张卡片 · 点击查看详情`;
 }
 
 function refreshGrid() {
@@ -50,24 +77,26 @@ function refreshGrid() {
   updateCountHint(cardsCache.length);
   bindCardEvents(document.getElementById('cardsContainer'), pageSubjects);
   if (filterEl && subjectId) filterEl.value = subjectId;
+  const deleteAllBtn = document.getElementById('btnDeleteAllBySubject');
+  if (deleteAllBtn) deleteAllBtn.hidden = !subjectId;
 }
 
 function renderCardsGrid(cards, subjects) {
   if (!cards.length) {
     return `<div class="empty-state">
-      <div class="empty-icon">&#9733;</div>
-      <h3 class="empty-title">\u6682\u65e0\u77e5\u8bc6\u5361\u7247</h3>
-      <p class="empty-desc">\u8bf7\u5148\u5728\u79d1\u76ee\u7ba1\u7406\u4e2d\u4e0a\u4f20\u8d44\u6599\uff0c\u7531 AI \u6839\u636e\u539f\u6587\u62bd\u53d6\u672f\u8bed\u5e76\u751f\u6210\u4e00\u53e5\u8bdd\u89e3\u91ca\u4e0e\u8be6\u7ec6\u8bf4\u660e</p>
-      <button class="btn btn-primary" id="gotoSubjects">\u524d\u5f80\u79d1\u76ee\u7ba1\u7406</button>
+      <div class="empty-icon">★</div>
+      <h3 class="empty-title">暂无知识卡片</h3>
+      <p class="empty-desc">请先在科目管理中上传资料，由 AI 根据原文抽取术语并生成一句话解释与详细说明</p>
+      <button class="btn btn-primary" id="gotoSubjects">前往科目管理</button>
     </div>`;
   }
 
   return `<div class="card-grid">${cards
     .map((c) => `<div class="knowledge-card" data-id="${c.id}">
-        <button class="card-delete-btn" data-id="${c.id}" title="\u5220\u9664\u5361\u7247" aria-label="\u5220\u9664\u5361\u7247">&times;</button>
+        <button class="card-delete-btn" data-id="${c.id}" title="删除卡片" aria-label="删除卡片">&times;</button>
         <div class="concept-title">${escapeHtml(c.concept)}</div>
         <div class="concept-preview">${escapeHtml(c.summary)}</div>
-        <div class="card-hint">\u70b9\u51fb\u67e5\u770b\u8be6\u7ec6\u89e3\u91ca \u2192</div>
+        <div class="card-hint">点击查看详细解释 →</div>
       </div>`)
     .join('')}</div>`;
 }
@@ -93,17 +122,13 @@ function bindCardEvents(container, subjects) {
 }
 
 async function handleDeleteCard(cardId) {
-  const card = cardsCache.find((c) => c.id === cardId);
-  if (!card) return;
-  if (!confirm(`\u786e\u5b9a\u5220\u9664\u77e5\u8bc6\u5361\u7247\u300c${card.concept}\u300d\u5417\uff1f`)) return;
-
   try {
     await api.deleteKnowledgeCard(cardId);
     cardsCache = cardsCache.filter((c) => c.id !== cardId);
     refreshGrid();
-    showToast('\u5df2\u5220\u9664\u77e5\u8bc6\u5361\u7247', 'success');
+    showToast('已删除知识卡片', 'success');
   } catch (err) {
-    showToast(err.message || '\u5220\u9664\u5931\u8d25', 'error');
+    showToast(err.message || '删除失败', 'error');
   }
 }
 
@@ -118,25 +143,25 @@ function openCardDetail(card, subjects) {
     body: `
       <div class="card-detail-modal">
         <div class="card-detail-section">
-          <label class="form-label">\u6240\u5c5e\u79d1\u76ee</label>
-          <p>${escapeHtml(sub?.name || '\u672a\u77e5')}</p>
+          <label class="form-label">所属科目</label>
+          <p>${escapeHtml(sub?.name || '未知')}</p>
         </div>
         <div class="card-detail-section">
-          <label class="form-label">\u7b80\u4ecb</label>
+          <label class="form-label">简介</label>
           <p class="card-detail-text">${nl2br(card.summary)}</p>
         </div>
         <div class="card-detail-section">
-          <label class="form-label">\u8be6\u7ec6\u8bf4\u660e</label>
-          <div class="card-detail-full">${nl2br(card.detail || '\u6682\u65e0\u8be6\u7ec6\u8bf4\u660e')}</div>
+          <label class="form-label">详细说明</label>
+          <div class="card-detail-full">${nl2br(card.detail || '暂无详细说明')}</div>
         </div>
         <div class="card-detail-footer">
-          <span>\u521b\u5efa\u65f6\u95f4\uff1a${formatDate(card.createdAt)}</span>
+          <span>创建时间：${formatDate(card.createdAt)}</span>
         </div>
       </div>
     `,
     footer: `
-      <button class="btn btn-danger" id="modalDeleteBtn">\u5220\u9664\u5361\u7247</button>
-      <button class="btn btn-secondary" id="modalCloseBtn">\u5173\u95ed</button>
+      <button class="btn btn-danger" id="modalDeleteBtn">删除卡片</button>
+      <button class="btn btn-secondary" id="modalCloseBtn">关闭</button>
     `,
     onClose: () => modal.classList.remove('modal-lg'),
   });

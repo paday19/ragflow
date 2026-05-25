@@ -58,7 +58,7 @@ function initNavigation() {
 
 function requireAuth() {
   if (!isLoggedIn()) {
-    window.location.href = 'index.html';
+    window.location.href = '/';
     return false;
   }
   return true;
